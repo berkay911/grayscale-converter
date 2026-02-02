@@ -1,8 +1,13 @@
 from django.http import HttpResponse, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
-from PIL import Image
+from PIL import Image, UnidentifiedImageError
 import io
 
+try:
+    import pillow_heif
+    pillow_heif.register_heif_opener()
+except ImportError:
+    pass  
 
 @csrf_exempt
 def convert_file(request):
@@ -12,16 +17,21 @@ def convert_file(request):
 
         file = request.FILES["file"]
 
+        try:
+            img = Image.open(file)
+        except UnidentifiedImageError:
+            return JsonResponse({"error": "Görsel formatı desteklenmiyor veya bozuk dosya"}, status=400)
 
-        img = Image.open(file)
         img = img.convert("L")  
 
         temp = io.BytesIO()
-        img.save(temp, format="PNG")
+        
+        format = img.format if img.format in ["JPEG", "PNG", "BMP", "GIF", "TIFF", "WEBP"] else "PNG"
+        img.save(temp, format=format)
         temp.seek(0)
 
-        response = HttpResponse(temp, content_type="image/png")
-        response["Content-Disposition"] = 'inline; filename="grayscale.png"'
+        response = HttpResponse(temp, content_type=f"image/{format.lower()}")
+        response["Content-Disposition"] = f'inline; filename="grayscale.{format.lower()}"'
         return response
 
     return JsonResponse({"error": "Sadece POST kabul edilir"}, status=405)
